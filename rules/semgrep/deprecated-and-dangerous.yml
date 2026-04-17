@@ -92,7 +92,7 @@ rules:
       anywhere in the app steals every user's token.
       Use httpOnly cookies instead.
     severity: WARNING
-    languages: [typescript, javascript, tsx, jsx]
+    languages: [typescript, javascript]
     pattern-either:
       - pattern-regex: 'localStorage\.setItem\([''"](access_?token|auth_?token|jwt|bearer)[''"]'
       - pattern-regex: 'localStorage\[[''"]({access_?token|auth_?token|jwt|bearer)[''"]\]\s*='

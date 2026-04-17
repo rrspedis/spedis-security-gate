@@ -4,7 +4,7 @@ rules:
       dangerouslySetInnerHTML with non-sanitized content. XSS risk.
       Use DOMPurify.sanitize() or equivalent, or render as text.
     severity: ERROR
-    languages: [typescript, javascript, tsx, jsx]
+    languages: [typescript, javascript]
     patterns:
       - pattern-either:
           - pattern: |
@@ -50,7 +50,7 @@ rules:
       <a href> or <Link href> with user-controlled value and no URL validation.
       Can be weaponized as javascript: URI for XSS.
     severity: WARNING
-    languages: [typescript, tsx, jsx]
+    languages: [typescript, javascript]
     pattern-either:
       - pattern: <a href={$CTX.req.$X}>...</a>
       - pattern: <Link href={$CTX.req.$X}>...</Link>
