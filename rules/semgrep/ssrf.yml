@@ -7,27 +7,28 @@ rules:
       (127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16).
     severity: ERROR
     languages: [typescript, javascript]
-    pattern-either:
-      - pattern: fetch($CTX.req.$X)
-      - pattern: fetch(req.body.$X)
-      - pattern: fetch(req.query.$X)
-      - pattern: |
-          const $URL = $CTX.req.$X;
+    patterns:
+      - pattern-either:
+          - pattern: fetch($CTX.req.$X)
+          - pattern: fetch(req.body.$X)
+          - pattern: fetch(req.query.$X)
+          - pattern: |
+              const $URL = $CTX.req.$X;
+              ...
+              fetch($URL)
+          - pattern: |
+              const $URL = req.body.$X;
+              ...
+              fetch($URL)
+      - pattern-not-inside: |
+          $VALIDATOR($URL);
           ...
-          fetch($URL)
-      - pattern: |
-          const $URL = req.body.$X;
+      - pattern-not-inside: |
+          validateUrl($URL);
           ...
-          fetch($URL)
-    pattern-not-inside: |
-      $VALIDATOR($URL);
-      ...
-    pattern-not-inside: |
-      validateUrl($URL);
-      ...
-    pattern-not-inside: |
-      isAllowedUrl($URL);
-      ...
+      - pattern-not-inside: |
+          isAllowedUrl($URL);
+          ...
 
   - id: axios-with-user-controlled-url
     message: |

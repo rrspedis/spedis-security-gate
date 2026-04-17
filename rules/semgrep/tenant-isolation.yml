@@ -6,16 +6,17 @@ rules:
       Add .where(eq(table.tenantId, ctx.tenantId)) or equivalent.
     severity: ERROR
     languages: [typescript, javascript]
-    pattern-either:
-      - pattern: db.select().from($TABLE)
-      - pattern: db.select($COLS).from($TABLE)
-      - pattern: $DB.select().from($TABLE)
-    pattern-not-inside: |
-      ...
-      .where(...)
-      ...
-    pattern-not-inside: |
-      $X.where($Y)
+    patterns:
+      - pattern-either:
+          - pattern: db.select().from($TABLE)
+          - pattern: db.select($COLS).from($TABLE)
+          - pattern: $DB.select().from($TABLE)
+      - pattern-not-inside: |
+          ...
+          .where(...)
+          ...
+      - pattern-not-inside: |
+          $X.where($Y)
     paths:
       exclude:
         - "**/*.test.*"
@@ -43,16 +44,17 @@ rules:
       If intentional, add a comment // @allow-full-delete.
     severity: ERROR
     languages: [typescript, javascript]
-    pattern-either:
-      - pattern: db.delete($TABLE)
-      - pattern: $DB.delete($TABLE)
-    pattern-not-inside: |
-      ...
-      .where(...)
-      ...
-    pattern-not-inside: |
-      // @allow-full-delete
-      ...
+    patterns:
+      - pattern-either:
+          - pattern: db.delete($TABLE)
+          - pattern: $DB.delete($TABLE)
+      - pattern-not-inside: |
+          ...
+          .where(...)
+          ...
+      - pattern-not-inside: |
+          // @allow-full-delete
+          ...
 
   - id: drizzle-update-without-where
     message: |
@@ -60,16 +62,17 @@ rules:
       If intentional, add a comment // @allow-full-update.
     severity: ERROR
     languages: [typescript, javascript]
-    pattern-either:
-      - pattern: db.update($TABLE).set(...)
-      - pattern: $DB.update($TABLE).set(...)
-    pattern-not-inside: |
-      ...
-      .where(...)
-      ...
-    pattern-not-inside: |
-      // @allow-full-update
-      ...
+    patterns:
+      - pattern-either:
+          - pattern: db.update($TABLE).set(...)
+          - pattern: $DB.update($TABLE).set(...)
+      - pattern-not-inside: |
+          ...
+          .where(...)
+          ...
+      - pattern-not-inside: |
+          // @allow-full-update
+          ...
 
   - id: prisma-findmany-without-tenant
     message: |
@@ -77,21 +80,22 @@ rules:
       Multi-tenant data leak risk.
     severity: WARNING
     languages: [typescript, javascript]
-    pattern-either:
-      - pattern: prisma.$MODEL.findMany()
-      - pattern: prisma.$MODEL.findMany({ })
-      - pattern: |
+    patterns:
+      - pattern-either:
+          - pattern: prisma.$MODEL.findMany()
+          - pattern: prisma.$MODEL.findMany({ })
+          - pattern: |
+              prisma.$MODEL.findMany({
+                where: { ... }
+              })
+      - pattern-not: |
           prisma.$MODEL.findMany({
-            where: { ... }
+            where: { ..., tenantId: $X, ... }
           })
-    pattern-not: |
-      prisma.$MODEL.findMany({
-        where: { ..., tenantId: $X, ... }
-      })
-    pattern-not: |
-      prisma.$MODEL.findMany({
-        where: { ..., tenant_id: $X, ... }
-      })
+      - pattern-not: |
+          prisma.$MODEL.findMany({
+            where: { ..., tenant_id: $X, ... }
+          })
 
   - id: raw-sql-without-tenant-filter
     message: |
@@ -99,10 +103,11 @@ rules:
       a multi-tenant table, or add WHERE tenant_id = $1.
     severity: WARNING
     languages: [typescript, javascript]
-    pattern-either:
-      - pattern: sql`SELECT ... FROM $TABLE ...`
-      - pattern: db.execute(sql`SELECT ... FROM $TABLE ...`)
-    pattern-not-regex: '(?i)(tenant_id|tenantId)'
+    patterns:
+      - pattern-either:
+          - pattern: sql`SELECT ... FROM $TABLE ...`
+          - pattern: db.execute(sql`SELECT ... FROM $TABLE ...`)
+      - pattern-not-regex: '(?i)(tenant_id|tenantId)'
     paths:
       exclude:
         - "**/migrations/**"

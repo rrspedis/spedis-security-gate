@@ -22,18 +22,19 @@ rules:
       add a comment // @silent-catch explaining why. Otherwise log or throw.
     severity: WARNING
     languages: [typescript, javascript]
-    pattern-either:
-      - pattern: |
-          try { ... } catch (...) { return null; }
-      - pattern: |
-          try { ... } catch (...) { return undefined; }
-      - pattern: |
-          try { ... } catch (...) { return; }
-      - pattern: |
-          try { ... } catch { return null; }
-    pattern-not-inside: |
-      // @silent-catch
-      ...
+    patterns:
+      - pattern-either:
+          - pattern: |
+              try { ... } catch (...) { return null; }
+          - pattern: |
+              try { ... } catch (...) { return undefined; }
+          - pattern: |
+              try { ... } catch (...) { return; }
+          - pattern: |
+              try { ... } catch { return null; }
+      - pattern-not-inside: |
+          // @silent-catch
+          ...
     paths:
       exclude:
         - "**/*.test.*"
@@ -64,17 +65,17 @@ rules:
       may crash the process or leak error details.
     severity: INFO
     languages: [typescript, javascript]
-    pattern-either:
+    patterns:
       - pattern: |
           async function $F(...) {
             ...
             await $X;
             ...
           }
-    pattern-not-inside: |
-      try { ... } catch (...) { ... }
-    pattern-not-inside: |
-      ... .catch(...)
+      - pattern-not-inside: |
+          try { ... } catch (...) { ... }
+      - pattern-not-inside: |
+          ... .catch(...)
     paths:
       exclude:
         - "**/*.test.*"

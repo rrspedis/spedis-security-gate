@@ -5,21 +5,22 @@ rules:
       Use DOMPurify.sanitize() or equivalent, or render as text.
     severity: ERROR
     languages: [typescript, javascript, tsx, jsx]
-    pattern-either:
-      - pattern: |
-          <$TAG dangerouslySetInnerHTML={{ __html: $X }} />
-      - pattern: |
-          <$TAG dangerouslySetInnerHTML={{ __html: $X }}>...</$TAG>
-    pattern-not: |
-      <$TAG dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize($X) }} />
-    pattern-not: |
-      <$TAG dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize($X, ...) }} />
-    pattern-not: |
-      <$TAG dangerouslySetInnerHTML={{ __html: sanitize($X) }} />
-    pattern-not: |
-      <$TAG dangerouslySetInnerHTML={{ __html: sanitize($X, ...) }} />
-    pattern-not: |
-      <$TAG dangerouslySetInnerHTML={{ __html: purify.sanitize($X) }} />
+    patterns:
+      - pattern-either:
+          - pattern: |
+              <$TAG dangerouslySetInnerHTML={{ __html: $X }} />
+          - pattern: |
+              <$TAG dangerouslySetInnerHTML={{ __html: $X }}>...</$TAG>
+      - pattern-not: |
+          <$TAG dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize($X) }} />
+      - pattern-not: |
+          <$TAG dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize($X, ...) }} />
+      - pattern-not: |
+          <$TAG dangerouslySetInnerHTML={{ __html: sanitize($X) }} />
+      - pattern-not: |
+          <$TAG dangerouslySetInnerHTML={{ __html: sanitize($X, ...) }} />
+      - pattern-not: |
+          <$TAG dangerouslySetInnerHTML={{ __html: purify.sanitize($X) }} />
 
   - id: document-write-user-input
     message: |

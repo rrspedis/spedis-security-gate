@@ -31,13 +31,14 @@ rules:
       to dictate the algorithm (alg confusion attack).
     severity: ERROR
     languages: [typescript, javascript]
-    pattern-either:
-      - pattern: jwt.verify($T, $SECRET)
-      - pattern: jwt.verify($T, $SECRET, $CB)
-    pattern-not: |
-      jwt.verify($T, $SECRET, { ..., algorithms: [...], ... })
-    pattern-not: |
-      jwt.verify($T, $SECRET, { ..., algorithms: [...], ... }, $CB)
+    patterns:
+      - pattern-either:
+          - pattern: jwt.verify($T, $SECRET)
+          - pattern: jwt.verify($T, $SECRET, $CB)
+      - pattern-not: |
+          jwt.verify($T, $SECRET, { ..., algorithms: [...], ... })
+      - pattern-not: |
+          jwt.verify($T, $SECRET, { ..., algorithms: [...], ... }, $CB)
 
   - id: weak-hash-for-security
     message: |

@@ -40,19 +40,20 @@ rules:
       the handler unvalidated. Use zValidator or vValidator.
     severity: WARNING
     languages: [typescript, javascript]
-    pattern-either:
-      - pattern: |
-          app.post($PATH, async ($CTX) => { ... })
-      - pattern: |
-          app.put($PATH, async ($CTX) => { ... })
-      - pattern: |
-          app.patch($PATH, async ($CTX) => { ... })
-    pattern-not: |
-      app.post($PATH, zValidator(...), ...)
-    pattern-not: |
-      app.post($PATH, vValidator(...), ...)
-    pattern-not: |
-      app.post($PATH, $MIDDLEWARE, zValidator(...), ...)
+    patterns:
+      - pattern-either:
+          - pattern: |
+              app.post($PATH, async ($CTX) => { ... })
+          - pattern: |
+              app.put($PATH, async ($CTX) => { ... })
+          - pattern: |
+              app.patch($PATH, async ($CTX) => { ... })
+      - pattern-not: |
+          app.post($PATH, zValidator(...), ...)
+      - pattern-not: |
+          app.post($PATH, vValidator(...), ...)
+      - pattern-not: |
+          app.post($PATH, $MIDDLEWARE, zValidator(...), ...)
     paths:
       exclude:
         - "**/*.test.*"
