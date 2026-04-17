@@ -50,7 +50,7 @@ rules:
       <a href> or <Link href> with user-controlled value and no URL validation.
       Can be weaponized as javascript: URI for XSS.
     severity: WARNING
-    languages: [typescript, javascript]
+    languages: [typescript]
     pattern-either:
       - pattern: <a href={$CTX.req.$X}>...</a>
       - pattern: <Link href={$CTX.req.$X}>...</Link>
