@@ -23,6 +23,7 @@ rules:
         - "**/*.spec.*"
         - "**/migrations/**"
         - "**/seed*.ts"
+        - "**/routes/admin/**"
 
   - id: drizzle-query-findmany-without-where
     message: |

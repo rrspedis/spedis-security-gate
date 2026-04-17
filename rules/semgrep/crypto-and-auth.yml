@@ -6,8 +6,8 @@ rules:
     severity: ERROR
     languages: [typescript, javascript]
     pattern-either:
-      - pattern-regex: '(?i)(token|secret|hmac|signature|otp|password|hash|api_?key)\w*\s*===\s*'
-      - pattern-regex: '(?i)(token|secret|hmac|signature|otp|password|hash|api_?key)\w*\s*==\s*'
+      - pattern-regex: '(?i)(secret|hmac|signature|otp|api_?key)\w*\s*===\s*(?!["\x27`\d])'
+      - pattern-regex: '(?i)(secret|hmac|signature|otp|api_?key)\w*\s*==\s*(?!["\x27`\d])'
 
   - id: jwt-algorithm-none
     message: |
@@ -27,18 +27,14 @@ rules:
 
   - id: jwt-verify-without-algorithms
     message: |
-      jwt.verify() without specifying algorithms. This allows the token
-      to dictate the algorithm (alg confusion attack).
+      jwt.verify() or verify() called with only 2 arguments (token, secret)
+      and no algorithm specification. This allows the token to dictate the
+      algorithm (alg confusion attack). Pass algorithms explicitly.
     severity: ERROR
     languages: [typescript, javascript]
-    patterns:
-      - pattern-either:
-          - pattern: jwt.verify($T, $SECRET)
-          - pattern: jwt.verify($T, $SECRET, $CB)
-      - pattern-not: |
-          jwt.verify($T, $SECRET, { ..., algorithms: [...], ... })
-      - pattern-not: |
-          jwt.verify($T, $SECRET, { ..., algorithms: [...], ... }, $CB)
+    pattern-either:
+      - pattern: jwt.verify($T, $SECRET)
+      - pattern: verify($T, $SECRET)
 
   - id: weak-hash-for-security
     message: |

@@ -8,7 +8,7 @@ rules:
     languages: [typescript, javascript]
     pattern-either:
       - pattern: |
-          try { ... } catch (...) { }
+          try { ... } catch ($E) { }
       - pattern: |
           try { ... } catch { }
     paths:
@@ -25,11 +25,11 @@ rules:
     patterns:
       - pattern-either:
           - pattern: |
-              try { ... } catch (...) { return null; }
+              try { ... } catch ($E) { return null; }
           - pattern: |
-              try { ... } catch (...) { return undefined; }
+              try { ... } catch ($E) { return undefined; }
           - pattern: |
-              try { ... } catch (...) { return; }
+              try { ... } catch ($E) { return; }
           - pattern: |
               try { ... } catch { return null; }
       - pattern-not-inside: |
@@ -51,12 +51,12 @@ rules:
       - pattern: |
           function $F($INPUT, ...) {
             ...
-            try { ... } catch (...) { return $INPUT; }
+            try { ... } catch ($E) { return $INPUT; }
           }
       - pattern: |
           const $F = ($INPUT, ...) => {
             ...
-            try { ... } catch (...) { return $INPUT; }
+            try { ... } catch ($E) { return $INPUT; }
           }
 
   - id: unhandled-promise-rejection
@@ -73,7 +73,7 @@ rules:
             ...
           }
       - pattern-not-inside: |
-          try { ... } catch (...) { ... }
+          try { ... } catch ($E) { ... }
       - pattern-not-inside: |
           ... .catch(...)
     paths:
