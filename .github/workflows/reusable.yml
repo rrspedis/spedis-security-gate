@@ -4,17 +4,17 @@ on:
   workflow_call:
     inputs:
       stack:
-        description: 'Stack hint (auto|hono|nextjs|nodejs). Optional, affects some checks.'
+        description: 'Stack hint (auto|hono|nextjs|nodejs). Optional.'
         required: false
         type: string
         default: 'auto'
       severity:
-        description: 'Minimum severity to fail the build (INFO|WARNING|ERROR)'
+        description: 'Minimum severity to fail (INFO|WARNING|ERROR)'
         required: false
         type: string
         default: 'ERROR'
       skip-audit:
-        description: 'Skip pnpm/npm audit step (useful if known vulnerable deps are temporarily accepted)'
+        description: 'Skip dependency audit step'
         required: false
         type: boolean
         default: false
@@ -23,58 +23,85 @@ on:
         required: false
         type: string
         default: 'pnpm'
+      gate-repo:
+        description: 'Repo hosting the gate resources (owner/name)'
+        required: false
+        type: string
+        default: 'rrspedis/spedis-security-gate'
+      gate-ref:
+        description: 'Git ref of gate repo to use (branch, tag, or sha)'
+        required: false
+        type: string
+        default: 'main'
 
 jobs:
   secret-scan:
     name: Secret scanning (gitleaks)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout caller repo
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Download gate config
-        run: |
-          curl -sSL -o /tmp/gitleaks.toml \
-            https://raw.githubusercontent.com/${{ github.repository_owner }}/spedis-security-gate/main/rules/gitleaks.toml || \
-          curl -sSL -o /tmp/gitleaks.toml \
-            https://raw.githubusercontent.com/tropi/spedis-security-gate/main/rules/gitleaks.toml
+      - name: Checkout gate resources
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.gate-repo }}
+          ref: ${{ inputs.gate-ref }}
+          path: .gate
 
       - name: Run gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_CONFIG: /tmp/gitleaks.toml
+          GITLEAKS_CONFIG: ${{ github.workspace }}/.gate/rules/gitleaks.toml
 
   sast:
     name: Static analysis (Semgrep)
     runs-on: ubuntu-latest
-    container:
-      image: returntocorp/semgrep
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout caller repo
+        uses: actions/checkout@v4
 
-      - name: Run Semgrep with bundled + custom rules
-        env:
-          SEMGREP_RULES: >-
-            p/owasp-top-ten
-            p/typescript
-            p/javascript
-            p/nextjs
-            p/react
-            p/nodejs
-            p/secrets
+      - name: Checkout gate resources
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.gate-repo }}
+          ref: ${{ inputs.gate-ref }}
+          path: .gate
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Semgrep
+        run: pip install semgrep
+
+      - name: Verify custom rule files
         run: |
-          # Descargar reglas custom del repo central
-          mkdir -p /tmp/custom-rules
-          for rule in tenant-isolation secrets-and-config error-handling input-validation crypto-and-auth injection ssrf xss cors-and-headers deprecated-and-dangerous; do
-            curl -sSL -o /tmp/custom-rules/${rule}.yml \
-              https://raw.githubusercontent.com/tropi/spedis-security-gate/main/rules/semgrep/${rule}.yml
+          set -euo pipefail
+          echo "Custom rules to load:"
+          ls -la .gate/rules/semgrep/
+          for f in .gate/rules/semgrep/*.yml; do
+            grep -q "^rules:" "$f" || { echo "::error::Invalid rule file: $f"; exit 1; }
           done
+          echo "All custom rules validated."
 
+      - name: Run Semgrep (bundled registry + custom rules)
+        run: |
+          set -euo pipefail
           semgrep scan \
-            --config "$SEMGREP_RULES" \
-            --config /tmp/custom-rules \
+            --config p/owasp-top-ten \
+            --config p/typescript \
+            --config p/javascript \
+            --config p/nextjs \
+            --config p/react \
+            --config p/nodejs \
+            --config p/secrets \
+            --config .gate/rules/semgrep \
             --severity ${{ inputs.severity }} \
             --error \
             --metrics off \
@@ -84,7 +111,8 @@ jobs:
             --exclude 'build' \
             --exclude '*.test.ts' \
             --exclude '*.spec.ts' \
-            --exclude '**/migrations/**'
+            --exclude '**/migrations/**' \
+            --exclude '.gate/**'
 
   dependency-audit:
     name: Dependency audit
@@ -98,28 +126,66 @@ jobs:
         with:
           version: 9
 
+      - uses: oven-sh/setup-bun@v2
+        if: ${{ inputs.package-manager == 'bun' }}
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: ${{ inputs.package-manager }}
+          # NOTE: no `cache` input — lockfile location varies in monorepos,
+          # causing setup-node to fail. Install step below handles its own.
 
-      - name: Install dependencies
+      - name: Audit dependencies (monorepo-aware)
         run: |
-          case "${{ inputs.package-manager }}" in
-            pnpm) pnpm install --frozen-lockfile ;;
-            npm)  npm ci ;;
-            yarn) yarn install --frozen-lockfile ;;
-            bun)  bun install --frozen-lockfile ;;
+          set -euo pipefail
+
+          PM="${{ inputs.package-manager }}"
+          case "$PM" in
+            pnpm) LOCKFILE="pnpm-lock.yaml" ;;
+            npm)  LOCKFILE="package-lock.json" ;;
+            yarn) LOCKFILE="yarn.lock" ;;
+            bun)  LOCKFILE="bun.lock" ;;
+            *) echo "::error::Unsupported package manager: $PM"; exit 1 ;;
           esac
 
-      - name: Run package manager audit
-        run: |
-          case "${{ inputs.package-manager }}" in
-            pnpm) pnpm audit --audit-level=high ;;
-            npm)  npm audit --audit-level=high ;;
-            yarn) yarn audit --level high ;;
-            bun)  bun audit --audit-level high ;;
-          esac
+          # Find all lockfiles (supports monorepos). Limit depth to avoid node_modules.
+          LOCKFILES=$(find . -maxdepth 4 -name "$LOCKFILE" -not -path '*/node_modules/*' 2>/dev/null || true)
+
+          if [ -z "$LOCKFILES" ]; then
+            echo "::warning::No $LOCKFILE found. Skipping audit."
+            exit 0
+          fi
+
+          echo "Found lockfiles to audit:"
+          echo "$LOCKFILES"
+          echo ""
+
+          OVERALL_EXIT=0
+          for lockfile in $LOCKFILES; do
+            dir=$(dirname "$lockfile")
+            echo ""
+            echo "================================================"
+            echo "Auditing: $dir"
+            echo "================================================"
+
+            pushd "$dir" > /dev/null
+            case "$PM" in
+              pnpm) pnpm audit --audit-level=high || OVERALL_EXIT=$? ;;
+              npm)  npm audit --audit-level=high || OVERALL_EXIT=$? ;;
+              yarn) yarn audit --level high || OVERALL_EXIT=$? ;;
+              bun)  bun audit --audit-level=high || OVERALL_EXIT=$? ;;
+            esac
+            popd > /dev/null
+          done
+
+          if [ "$OVERALL_EXIT" -ne 0 ]; then
+            echo ""
+            echo "::error::One or more audits found high/critical vulnerabilities."
+            exit "$OVERALL_EXIT"
+          fi
+
+          echo ""
+          echo "All audits passed."
 
       - name: Run OSV Scanner (deeper dependency check)
         uses: google/osv-scanner-action/osv-scanner-action@v1.9.0
@@ -135,23 +201,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download custom check scripts
+      - name: Checkout gate resources
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.gate-repo }}
+          ref: ${{ inputs.gate-ref }}
+          path: .gate
+
+      - name: Verify custom check scripts
         run: |
-          mkdir -p /tmp/checks
+          set -euo pipefail
           for script in check-env-usage check-missing-auth check-raw-sql; do
-            curl -sSL -o /tmp/checks/${script}.sh \
-              https://raw.githubusercontent.com/tropi/spedis-security-gate/main/scripts/${script}.sh
-            chmod +x /tmp/checks/${script}.sh
+            file=".gate/scripts/${script}.sh"
+            if [ ! -f "$file" ]; then
+              echo "::error::Missing script: $file"
+              exit 1
+            fi
+            head -1 "$file" | grep -q "^#!" || { echo "::error::Not a shell script: $file"; exit 1; }
+            chmod +x "$file"
           done
 
       - name: Check env var hardcoded fallbacks
-        run: /tmp/checks/check-env-usage.sh
+        run: bash .gate/scripts/check-env-usage.sh
 
       - name: Check endpoints without auth middleware
-        run: /tmp/checks/check-missing-auth.sh
+        run: bash .gate/scripts/check-missing-auth.sh
 
       - name: Check raw SQL without parameterization
-        run: /tmp/checks/check-raw-sql.sh
+        run: bash .gate/scripts/check-raw-sql.sh
 
   summary:
     name: Gate summary
@@ -161,15 +238,28 @@ jobs:
     steps:
       - name: Fail if any required check failed
         run: |
-          if [[ "${{ needs.secret-scan.result }}" != "success" ]] || \
-             [[ "${{ needs.sast.result }}" != "success" ]] || \
-             [[ "${{ needs.custom-checks.result }}" != "success" ]]; then
-            echo "❌ Security gate FAILED. Review logs above."
+          SECRETS="${{ needs.secret-scan.result }}"
+          SAST="${{ needs.sast.result }}"
+          CUSTOM="${{ needs.custom-checks.result }}"
+          AUDIT="${{ needs.dependency-audit.result }}"
+
+          echo "Results:"
+          echo "  secret-scan:      $SECRETS"
+          echo "  sast:             $SAST"
+          echo "  custom-checks:    $CUSTOM"
+          echo "  dependency-audit: $AUDIT"
+          echo ""
+
+          FAILED=0
+          for r in "$SECRETS" "$SAST" "$CUSTOM"; do
+            if [ "$r" != "success" ]; then FAILED=1; fi
+          done
+          if [ "$AUDIT" != "success" ] && [ "$AUDIT" != "skipped" ]; then
+            FAILED=1
+          fi
+
+          if [ "$FAILED" -eq 1 ]; then
+            echo "::error::Security gate FAILED. Review job logs above."
             exit 1
           fi
-          if [[ "${{ needs.dependency-audit.result }}" != "success" ]] && \
-             [[ "${{ needs.dependency-audit.result }}" != "skipped" ]]; then
-            echo "❌ Dependency audit failed."
-            exit 1
-          fi
-          echo "✅ Security gate passed."
+          echo "Security gate passed."
