@@ -1,0 +1,46 @@
+# Example: Security gate for a Turborepo monorepo
+# (Indesy, Adscory, crezco — multiple apps in one repo)
+#
+# Copy to: .github/workflows/security-gate.yml
+
+name: Security Gate
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  security-events: write
+
+jobs:
+  # Only run the gate if code files changed, not docs/config
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - 'apps/**'
+              - 'packages/**'
+              - 'src/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+
+  gate:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    uses: tropi/spedis-security-gate/.github/workflows/reusable.yml@v1.0.0
+    with:
+      package-manager: pnpm
+      severity: ERROR
+    secrets: inherit

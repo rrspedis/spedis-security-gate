@@ -1,0 +1,27 @@
+# Example: Security gate for Hono + Drizzle + PostgreSQL project
+# (Axisten, Indesy, Adscory backend)
+#
+# Copy to: .github/workflows/security-gate.yml
+
+name: Security Gate
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  security-events: write
+
+jobs:
+  gate:
+    uses: tropi/spedis-security-gate/.github/workflows/reusable.yml@v1.0.0
+    with:
+      package-manager: pnpm
+      severity: ERROR
+      # stack: hono  # optional hint, autodetected by default
+    secrets: inherit

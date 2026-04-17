@@ -1,0 +1,76 @@
+rules:
+  - id: cors-wildcard-with-credentials
+    message: |
+      CORS configured with origin wildcard and credentials true.
+      Browsers reject this combination, so this config is broken AND indicates
+      misconfigured intent. Specify exact origins.
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: |
+          cors({ origin: "*", credentials: true, ... })
+      - pattern: |
+          cors({ origin: '*', credentials: true, ... })
+      - pattern: |
+          cors({ credentials: true, origin: "*", ... })
+      - pattern: |
+          cors({ credentials: true, origin: '*', ... })
+
+  - id: cors-reflecting-origin
+    message: |
+      CORS reflecting Origin header without validation essentially allows
+      any origin with credentials. Maintain an explicit allowlist.
+    severity: WARNING
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: |
+          cors({ origin: (origin, cb) => cb(null, origin), ... })
+      - pattern: |
+          cors({ origin: true, credentials: true, ... })
+
+  - id: helmet-disabled
+    message: |
+      Helmet disabled or contentSecurityPolicy disabled in Express.
+      Unless you are setting CSP manually elsewhere, this removes critical headers.
+    severity: WARNING
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: |
+          helmet({ contentSecurityPolicy: false, ... })
+      - pattern: |
+          helmet({ ..., contentSecurityPolicy: false })
+
+  - id: nextjs-config-missing-security-headers
+    message: |
+      next.config.js has no security headers() function. Missing CSP, HSTS,
+      X-Frame-Options, X-Content-Type-Options leaves the app exposed.
+    severity: INFO
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: |
+          module.exports = { $FIELDS }
+      - pattern: |
+          export default { $FIELDS }
+    pattern-not-inside: |
+      {
+        ...,
+        async headers() { ... },
+        ...
+      }
+    paths:
+      include:
+        - "**/next.config.js"
+        - "**/next.config.mjs"
+        - "**/next.config.ts"
+
+  - id: csp-unsafe-inline-eval
+    message: |
+      CSP includes unsafe-inline or unsafe-eval. In production these defeat
+      most of CSP purpose. Use nonces or hashes instead.
+    severity: WARNING
+    languages: [typescript, javascript]
+    pattern-regex: "(?i)content-security-policy.*(unsafe-inline|unsafe-eval)"
+    paths:
+      exclude:
+        - "**/*.test.*"
+        - "**/*.spec.*"

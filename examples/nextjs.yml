@@ -1,0 +1,46 @@
+# Example: Security gate for Next.js project
+# (Adscory frontend, crezco web, Indesy web, Axisten console)
+#
+# Copy to: .github/workflows/security-gate.yml
+
+name: Security Gate
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  security-events: write
+
+jobs:
+  gate:
+    uses: tropi/spedis-security-gate/.github/workflows/reusable.yml@v1.0.0
+    with:
+      package-manager: pnpm
+      severity: ERROR
+      # stack: nextjs  # optional hint
+    secrets: inherit
+
+  # Extra check: Next.js config must have security headers
+  nextjs-headers-check:
+    name: Next.js security headers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify next.config has security headers
+        run: |
+          if ! grep -qE "(async headers|function headers)" next.config.*; then
+            echo "❌ next.config.* must export headers() with CSP, HSTS, X-Frame-Options."
+            echo "   See: https://nextjs.org/docs/advanced-features/security-headers"
+            exit 1
+          fi
+          # Check CSP present
+          if ! grep -qiE "content-security-policy" next.config.*; then
+            echo "⚠  Warning: no Content-Security-Policy detected in next.config."
+          fi
+          echo "✓ Security headers present."

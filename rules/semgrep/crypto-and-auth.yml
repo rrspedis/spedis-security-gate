@@ -1,0 +1,85 @@
+rules:
+  - id: secret-compared-with-equality-operator
+    message: |
+      Comparing secrets (tokens, HMAC, OTP) with === or == is vulnerable
+      to timing attacks. Use crypto.timingSafeEqual(Buffer, Buffer).
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern-regex: '(?i)(token|secret|hmac|signature|otp|password|hash|api_?key)\w*\s*===\s*'
+      - pattern-regex: '(?i)(token|secret|hmac|signature|otp|password|hash|api_?key)\w*\s*==\s*'
+
+  - id: jwt-algorithm-none
+    message: |
+      JWT with algorithm "none" bypasses signature verification.
+      This is a well-known vulnerability class (CVE-2015-9235 family).
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: |
+          jwt.sign($PAYLOAD, ..., { algorithm: "none", ... })
+      - pattern: |
+          jwt.sign($PAYLOAD, ..., { algorithm: 'none', ... })
+      - pattern: |
+          jwt.verify($T, ..., { algorithms: [..., "none", ...] })
+      - pattern: |
+          jwt.verify($T, ..., { algorithms: [..., 'none', ...] })
+
+  - id: jwt-verify-without-algorithms
+    message: |
+      jwt.verify() without specifying algorithms. This allows the token
+      to dictate the algorithm (alg confusion attack).
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: jwt.verify($T, $SECRET)
+      - pattern: jwt.verify($T, $SECRET, $CB)
+    pattern-not: |
+      jwt.verify($T, $SECRET, { ..., algorithms: [...], ... })
+    pattern-not: |
+      jwt.verify($T, $SECRET, { ..., algorithms: [...], ... }, $CB)
+
+  - id: weak-hash-for-security
+    message: |
+      MD5 or SHA1 used in what appears to be a security context. Use SHA-256
+      or better. MD5/SHA1 are OK for non-security uses (etags, cache keys).
+    severity: WARNING
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: crypto.createHash("md5")
+      - pattern: crypto.createHash('md5')
+      - pattern: crypto.createHash("sha1")
+      - pattern: crypto.createHash('sha1')
+
+  - id: math-random-for-token
+    message: |
+      Math.random() is NOT cryptographically secure. Used for tokens, OTPs,
+      session IDs, or any security purpose = vulnerability.
+      Use crypto.randomBytes() or crypto.randomUUID().
+    severity: WARNING
+    languages: [typescript, javascript]
+    pattern: |
+      function $F(...) {
+        ...
+        Math.random()
+        ...
+      }
+    metavariable-regex:
+      metavariable: $F
+      regex: '(?i).*(token|secret|otp|nonce|session|csrf|random|generate).*'
+
+  - id: bcrypt-rounds-too-low
+    message: |
+      bcrypt rounds < 10 is too weak for 2026. Use 12+ for production.
+    severity: WARNING
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: bcrypt.hash($P, 1)
+      - pattern: bcrypt.hash($P, 2)
+      - pattern: bcrypt.hash($P, 3)
+      - pattern: bcrypt.hash($P, 4)
+      - pattern: bcrypt.hash($P, 5)
+      - pattern: bcrypt.hash($P, 6)
+      - pattern: bcrypt.hash($P, 7)
+      - pattern: bcrypt.hash($P, 8)
+      - pattern: bcrypt.hash($P, 9)

@@ -1,0 +1,98 @@
+rules:
+  - id: console-log-in-production-path
+    message: |
+      console.log in production code path. Use structured logger (pino, winston)
+      that supports redaction and log levels.
+    severity: INFO
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: console.log(...)
+      - pattern: console.dir(...)
+    paths:
+      include:
+        - "src/**"
+        - "apps/**/src/**"
+      exclude:
+        - "**/*.test.*"
+        - "**/*.spec.*"
+        - "**/scripts/**"
+        - "**/migrations/**"
+
+  - id: typescript-any-in-request-handler
+    message: |
+      Using 'any' type defeats type safety at the API boundary where it
+      matters most. Use 'unknown' or define a proper type.
+    severity: INFO
+    languages: [typescript]
+    pattern-either:
+      - pattern: |
+          function $F(req: any, ...) { ... }
+      - pattern: |
+          async function $F(req: any, ...) { ... }
+      - pattern: |
+          ($CTX: any) => { ... }
+
+  - id: allow-list-check-in-comment
+    message: |
+      TODO/FIXME/HACK/XXX comment in code. Track these — a TODO in security code
+      is a known gap.
+    severity: INFO
+    languages: [typescript, javascript]
+    pattern-regex: "(?i)//\\s*(TODO|FIXME|HACK|XXX|BUG)(?:\\(security\\))?:"
+
+  - id: setimmediate-process-nexttick-from-user-input
+    message: |
+      setImmediate/process.nextTick scheduling arbitrary function from user data.
+      Review carefully for DoS or logic bypass.
+    severity: INFO
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: setImmediate($CTX.req.$X)
+      - pattern: process.nextTick($CTX.req.$X)
+
+  - id: nodejs-deprecated-buffer-constructor
+    message: |
+      Buffer() constructor is deprecated and unsafe (can leak memory).
+      Use Buffer.from() or Buffer.alloc().
+    severity: WARNING
+    languages: [typescript, javascript]
+    pattern: new Buffer(...)
+
+  - id: disabled-ssl-verification
+    message: |
+      SSL/TLS verification disabled. MITM risk. Never ship this to production.
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: |
+          process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+      - pattern: |
+          process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
+      - pattern: |
+          { rejectUnauthorized: false, ... }
+      - pattern: |
+          axios.create({ ..., httpsAgent: new https.Agent({ rejectUnauthorized: false }), ... })
+
+  - id: sensitive-data-in-url
+    message: |
+      Sensitive field (password, token, api_key, secret) in URL query string.
+      URL params are logged in server logs and browser history.
+      Move to request body or headers.
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern-regex: "[?&](password|passwd|pwd|secret|api_?key|token|auth)="
+    paths:
+      exclude:
+        - "**/*.test.*"
+
+  - id: react-dangerouslyuse-localstorage-for-tokens
+    message: |
+      Storing auth tokens in localStorage is vulnerable to XSS. A single XSS
+      anywhere in the app steals every user's token.
+      Use httpOnly cookies instead.
+    severity: WARNING
+    languages: [typescript, javascript, tsx, jsx]
+    pattern-either:
+      - pattern-regex: 'localStorage\.setItem\([''"](access_?token|auth_?token|jwt|bearer)[''"]'
+      - pattern-regex: 'localStorage\[[''"]({access_?token|auth_?token|jwt|bearer)[''"]\]\s*='

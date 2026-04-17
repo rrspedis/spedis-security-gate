@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# Spedis Security Gate - pre-commit hook
+#
+# Runs FAST security checks on staged files before commit.
+# Skip with: git commit --no-verify (use sparingly)
+#
+# The full gate runs in GitHub Actions on PR.
+
+set -euo pipefail
+
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+cd "$REPO_ROOT"
+
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(ts|tsx|js|jsx|mjs|cjs)$' || true)
+
+if [ -z "$STAGED_FILES" ]; then
+  exit 0
+fi
+
+FAILURES=0
+
+# ============================================================
+# 1. Gitleaks (fast mode: only staged content)
+# ============================================================
+if command -v gitleaks >/dev/null 2>&1; then
+  echo "-> Running gitleaks on staged files..."
+  if ! gitleaks protect --staged --config .gitleaks.toml --redact --verbose 2>&1 | grep -vE '^(INFO|DEBUG)'; then
+    true  # gitleaks failed
+  fi
+  if ! gitleaks protect --staged --config .gitleaks.toml --redact --exit-code 1 >/dev/null 2>&1; then
+    echo -e "${RED}FAIL Gitleaks found secrets in staged changes.${NC}"
+    echo "   Review above or run: gitleaks protect --staged --verbose"
+    FAILURES=$((FAILURES + 1))
+  fi
+else
+  echo -e "${YELLOW}WARN gitleaks not installed locally. Install: https://github.com/gitleaks/gitleaks${NC}"
+fi
+
+# ============================================================
+# 2. Quick grep checks on staged content
+# ============================================================
+echo "-> Running quick pattern checks..."
+
+for file in $STAGED_FILES; do
+  [ ! -f "$file" ] && continue
+
+  # Check for env var hardcoded fallbacks
+  if grep -nE 'process\.env\.[A-Z_]+\s*(\|\||\?\?)\s*["'"'"'][^"'"'"']+["'"'"']' "$file" 2>/dev/null | \
+     grep -vE '(["'"'"'])(development|production|test|localhost|3000|3001)\1' | \
+     grep -vE '(\|\||\?\?)\s*(["'"'"']\s*["'"'"']|false|true|0|null)'; then
+    echo -e "${RED}FAIL $file: env var with hardcoded fallback${NC}"
+    FAILURES=$((FAILURES + 1))
+  fi
+
+  # Check for empty catch
+  if grep -nE 'catch\s*\([^)]*\)\s*\{\s*\}' "$file" 2>/dev/null; then
+    echo -e "${RED}FAIL $file: empty catch block${NC}"
+    FAILURES=$((FAILURES + 1))
+  fi
+  if grep -nE 'catch\s*\{\s*\}' "$file" 2>/dev/null; then
+    echo -e "${RED}FAIL $file: empty catch block${NC}"
+    FAILURES=$((FAILURES + 1))
+  fi
+
+  # Check for JWT algorithm none
+  if grep -nE 'algorithm:\s*["'"'"']none["'"'"']' "$file" 2>/dev/null; then
+    echo -e "${RED}FAIL $file: JWT algorithm 'none' is a known vulnerability${NC}"
+    FAILURES=$((FAILURES + 1))
+  fi
+
+  # Check for rejectUnauthorized: false
+  if grep -nE 'rejectUnauthorized:\s*false' "$file" 2>/dev/null; then
+    echo -e "${RED}FAIL $file: SSL verification disabled (rejectUnauthorized: false)${NC}"
+    FAILURES=$((FAILURES + 1))
+  fi
+
+  # Check for dev-secret style fallbacks
+  if grep -nE '(\|\||\?\?)\s*["'"'"'](dev-|test-|changeme|insecure|placeholder|default-secret)' "$file" 2>/dev/null; then
+    echo -e "${RED}FAIL $file: dev/placeholder secret as fallback${NC}"
+    FAILURES=$((FAILURES + 1))
+  fi
+
+  # Check for eval / new Function
+  if grep -nE '\beval\s*\(' "$file" 2>/dev/null; then
+    echo -e "${RED}FAIL $file: eval() detected${NC}"
+    FAILURES=$((FAILURES + 1))
+  fi
+  if grep -nE 'new\s+Function\s*\(' "$file" 2>/dev/null; then
+    echo -e "${RED}FAIL $file: new Function() detected${NC}"
+    FAILURES=$((FAILURES + 1))
+  fi
+done
+
+# ============================================================
+# Summary
+# ============================================================
+echo ""
+if [ $FAILURES -eq 0 ]; then
+  echo -e "${GREEN}OK Pre-commit security checks passed.${NC}"
+  exit 0
+else
+  echo -e "${RED}FAIL $FAILURES pre-commit check(s) failed.${NC}"
+  echo "To bypass (use sparingly): git commit --no-verify"
+  exit 1
+fi

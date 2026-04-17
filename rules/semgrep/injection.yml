@@ -1,0 +1,83 @@
+rules:
+  - id: shell-command-injection
+    message: |
+      Shell command constructed with template literal or string concat
+      using user input. Use child_process.execFile() with arg array.
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: |
+          child_process.exec(`...${$X}...`, ...)
+      - pattern: |
+          exec(`...${$X}...`, ...)
+      - pattern: |
+          child_process.execSync(`...${$X}...`)
+      - pattern: |
+          execSync(`...${$X}...`)
+      - pattern: |
+          child_process.exec($A + $B, ...)
+
+  - id: spawn-with-shell-true
+    message: |
+      child_process.spawn with shell true re-introduces shell injection risk.
+      Use shell false and pass args as array.
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: |
+          child_process.spawn($CMD, $ARGS, { shell: true, ... })
+      - pattern: |
+          spawn($CMD, $ARGS, { shell: true, ... })
+
+  - id: eval-or-function-constructor
+    message: |
+      eval() or new Function() from user input = RCE. Never use these
+      with untrusted data.
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: eval($X)
+      - pattern: new Function(...)
+      - pattern: Function($X, ...)
+
+  - id: vm-runincontext-user-input
+    message: |
+      vm.runInContext/runInNewContext is NOT a security sandbox. An attacker
+      in the sandbox can escape. Do not treat this as sandboxing for untrusted code.
+    severity: WARNING
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: vm.runInContext(...)
+      - pattern: vm.runInNewContext(...)
+      - pattern: vm.runInThisContext(...)
+
+  - id: raw-sql-with-template-literal-and-input
+    message: |
+      Raw SQL built with template literal including a variable. If that
+      variable is user-controlled, this is SQL injection.
+      Use parameterized queries (sql tagged templates with a library that
+      parameterizes, or explicit placeholders).
+    severity: WARNING
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: |
+          db.execute(`...${$X}...`)
+      - pattern: |
+          $POOL.query(`SELECT ...${$X}...`)
+      - pattern: |
+          client.query(`SELECT ...${$X}...`)
+
+  - id: mongodb-operator-injection
+    message: |
+      User input passed directly to MongoDB query without type check.
+      Attacker can inject operators to bypass logic.
+      Verify input is a primitive (typeof === string) before using.
+    severity: WARNING
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: |
+          $COLL.find({ $FIELD: $CTX.req.$X })
+      - pattern: |
+          $COLL.findOne({ $FIELD: req.body.$X })
+      - pattern: |
+          $COLL.findOne({ $FIELD: req.query.$X })

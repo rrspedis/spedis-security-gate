@@ -1,0 +1,83 @@
+rules:
+  - id: hono-raw-body-to-db
+    message: |
+      Raw request body passed directly to db insert/update. This allows
+      mass assignment attacks (attacker sets admin:true, tenantId:other, etc).
+      Use a Zod schema with .strict() and pass validated data only.
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: |
+          const $BODY = await $CTX.req.json();
+          ...
+          db.insert($T).values($BODY)
+      - pattern: |
+          const $BODY = await $CTX.req.json();
+          ...
+          db.update($T).set($BODY)
+      - pattern: |
+          const $BODY = await $CTX.req.json();
+          ...
+          $DB.insert($T).values($BODY)
+
+  - id: express-raw-body-to-db
+    message: |
+      req.body passed directly to DB insert/update. Mass assignment risk.
+      Validate with Zod/valibot schema first.
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: db.insert($T).values(req.body)
+      - pattern: db.update($T).set(req.body)
+      - pattern: |
+          prisma.$M.create({ data: req.body })
+      - pattern: |
+          prisma.$M.update({ data: req.body, ... })
+
+  - id: hono-endpoint-without-validator
+    message: |
+      Hono endpoint without a request validator middleware. Requests reach
+      the handler unvalidated. Use zValidator or vValidator.
+    severity: WARNING
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: |
+          app.post($PATH, async ($CTX) => { ... })
+      - pattern: |
+          app.put($PATH, async ($CTX) => { ... })
+      - pattern: |
+          app.patch($PATH, async ($CTX) => { ... })
+    pattern-not: |
+      app.post($PATH, zValidator(...), ...)
+    pattern-not: |
+      app.post($PATH, vValidator(...), ...)
+    pattern-not: |
+      app.post($PATH, $MIDDLEWARE, zValidator(...), ...)
+    paths:
+      exclude:
+        - "**/*.test.*"
+
+  - id: path-traversal-risk
+    message: |
+      User-controlled path joined with filesystem operation without
+      path validation. Use path.resolve() + check against allowed base dir.
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: fs.readFile($CTX.req.$X, ...)
+      - pattern: fs.writeFile($CTX.req.$X, ...)
+      - pattern: fs.readFileSync($CTX.req.$X, ...)
+      - pattern: path.join($BASE, $CTX.req.$X)
+      - pattern: path.join($BASE, req.params.$X)
+      - pattern: path.join($BASE, req.query.$X)
+
+  - id: redos-risk-unbounded-regex-input
+    message: |
+      Regex test against unbounded user input. Verify input has length limit
+      or use a regex engine with timeout (RE2).
+    severity: INFO
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: $REGEX.test($CTX.req.$X)
+      - pattern: $REGEX.test(req.body.$X)
+      - pattern: $REGEX.exec($CTX.req.$X)

@@ -1,0 +1,109 @@
+rules:
+  - id: drizzle-select-without-tenant-id
+    message: |
+      Query on a multi-tenant table without tenant_id filter.
+      This is a potential IDOR / cross-tenant data leak.
+      Add .where(eq(table.tenantId, ctx.tenantId)) or equivalent.
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: db.select().from($TABLE)
+      - pattern: db.select($COLS).from($TABLE)
+      - pattern: $DB.select().from($TABLE)
+    pattern-not-inside: |
+      ...
+      .where(...)
+      ...
+    pattern-not-inside: |
+      $X.where($Y)
+    paths:
+      exclude:
+        - "**/*.test.*"
+        - "**/*.spec.*"
+        - "**/migrations/**"
+        - "**/seed*.ts"
+
+  - id: drizzle-query-findmany-without-where
+    message: |
+      db.query.X.findMany() without a where clause. If this table is
+      multi-tenant, this returns data across tenants.
+    severity: WARNING
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: db.query.$TABLE.findMany()
+      - pattern: db.query.$TABLE.findMany({ })
+    paths:
+      exclude:
+        - "**/*.test.*"
+        - "**/*.spec.*"
+
+  - id: drizzle-delete-without-where
+    message: |
+      DELETE without WHERE clause. This wipes the entire table.
+      If intentional, add a comment // @allow-full-delete.
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: db.delete($TABLE)
+      - pattern: $DB.delete($TABLE)
+    pattern-not-inside: |
+      ...
+      .where(...)
+      ...
+    pattern-not-inside: |
+      // @allow-full-delete
+      ...
+
+  - id: drizzle-update-without-where
+    message: |
+      UPDATE without WHERE clause. This updates every row in the table.
+      If intentional, add a comment // @allow-full-update.
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: db.update($TABLE).set(...)
+      - pattern: $DB.update($TABLE).set(...)
+    pattern-not-inside: |
+      ...
+      .where(...)
+      ...
+    pattern-not-inside: |
+      // @allow-full-update
+      ...
+
+  - id: prisma-findmany-without-tenant
+    message: |
+      Prisma findMany without tenant_id in where clause.
+      Multi-tenant data leak risk.
+    severity: WARNING
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: prisma.$MODEL.findMany()
+      - pattern: prisma.$MODEL.findMany({ })
+      - pattern: |
+          prisma.$MODEL.findMany({
+            where: { ... }
+          })
+    pattern-not: |
+      prisma.$MODEL.findMany({
+        where: { ..., tenantId: $X, ... }
+      })
+    pattern-not: |
+      prisma.$MODEL.findMany({
+        where: { ..., tenant_id: $X, ... }
+      })
+
+  - id: raw-sql-without-tenant-filter
+    message: |
+      Raw SQL query without tenant_id filter. Verify this is not
+      a multi-tenant table, or add WHERE tenant_id = $1.
+    severity: WARNING
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: sql`SELECT ... FROM $TABLE ...`
+      - pattern: db.execute(sql`SELECT ... FROM $TABLE ...`)
+    pattern-not-regex: '(?i)(tenant_id|tenantId)'
+    paths:
+      exclude:
+        - "**/migrations/**"
+        - "**/*.test.*"

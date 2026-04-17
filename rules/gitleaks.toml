@@ -1,0 +1,129 @@
+# Spedis Security Gate - gitleaks config
+# Extends the default gitleaks ruleset with:
+# - Custom patterns (Zoho tokens, specific to Rafael's stack)
+# - Allowlist for common false positives
+
+title = "Spedis Security Gate"
+
+[extend]
+# Use gitleaks default rules as base
+useDefault = true
+
+# ============================================================
+# Custom rules (stack-specific)
+# ============================================================
+
+[[rules]]
+id = "zoho-oauth-token"
+description = "Zoho OAuth token"
+regex = '''1000\.[a-f0-9]{32}\.[a-f0-9]{32}'''
+keywords = ["zoho", "1000."]
+tags = ["zoho", "oauth", "token"]
+
+[[rules]]
+id = "zoho-client-secret"
+description = "Zoho client secret (typical format)"
+regex = '''(?i)zoho[_-]?(client[_-]?secret|secret)["'=:\s]+[a-f0-9]{40,}'''
+tags = ["zoho", "secret"]
+
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API key"
+regex = '''sk-ant-[a-zA-Z0-9_-]{20,}'''
+keywords = ["sk-ant-"]
+tags = ["anthropic", "api-key"]
+
+[[rules]]
+id = "meta-graph-access-token"
+description = "Meta Graph API access token"
+regex = '''EAA[A-Za-z0-9]{100,}'''
+keywords = ["EAA"]
+tags = ["meta", "facebook", "access-token"]
+
+[[rules]]
+id = "openai-api-key"
+description = "OpenAI API key"
+regex = '''sk-[a-zA-Z0-9]{48,}'''
+keywords = ["sk-"]
+tags = ["openai", "api-key"]
+
+[[rules]]
+id = "hetzner-api-token"
+description = "Hetzner Cloud API token"
+regex = '''(?i)hetzner[_-]?(api[_-]?)?(token|key)["'=:\s]+[A-Za-z0-9]{64}'''
+tags = ["hetzner", "api-key"]
+
+[[rules]]
+id = "cloudflare-api-token"
+description = "Cloudflare API token"
+regex = '''(?i)cf[_-]?(api[_-]?)?token["'=:\s]+[A-Za-z0-9_-]{40,}'''
+tags = ["cloudflare", "api-key"]
+
+[[rules]]
+id = "private-key-pem"
+description = "Private key in PEM format"
+regex = '''-----BEGIN (RSA|EC|OPENSSH|PGP|DSA|PRIVATE) (PRIVATE )?KEY-----'''
+tags = ["private-key", "pem"]
+
+[[rules]]
+id = "postgres-url-with-password"
+description = "PostgreSQL connection string with embedded password"
+regex = '''postgres(ql)?://[^:]+:[^@\s]+@[^\s]+'''
+keywords = ["postgres://", "postgresql://"]
+tags = ["database", "connection-string"]
+
+[[rules]]
+id = "generic-high-entropy-secret"
+description = "High-entropy string near 'secret', 'token', 'key', 'password'"
+regex = '''(?i)(secret|token|api[_-]?key|password|passwd|pwd|auth)["'=:\s]{1,5}[A-Za-z0-9+/=_-]{32,}["';\s]'''
+entropy = 3.5
+tags = ["generic", "secret"]
+
+# ============================================================
+# Allowlist (common false positives)
+# ============================================================
+
+[allowlist]
+description = "Allowlist for common false positives"
+
+# Paths to ignore
+paths = [
+  '''(.*?)(jpg|gif|doc|pdf|png|webp|svg|ico|woff|woff2|ttf|otf|eot)$''',
+  '''node_modules''',
+  '''dist''',
+  '''build''',
+  '''\.next''',
+  '''\.turbo''',
+  '''package-lock\.json''',
+  '''pnpm-lock\.yaml''',
+  '''yarn\.lock''',
+  '''\.example$''',
+  '''\.env\.example''',
+  '''\.env\.template''',
+  '''\.env\.sample''',
+]
+
+# Regex matches to ignore
+regexes = [
+  # Placeholder strings — common in examples/templates
+  '''(?i)(your[_-]?(api[_-]?)?(key|secret|token)|<(your|placeholder|replace|insert)-?\w*>|xxxxxx+|example|changeme|todo)''',
+  # Test/mock values
+  '''(?i)(test|mock|fake|dummy|example)[_-]?(api[_-]?)?(key|secret|token|password)''',
+  # UUIDs are not secrets on their own
+  '''[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}''',
+  # Common non-secret base64 patterns (favicons, small blobs)
+  '''data:image/.*;base64,''',
+]
+
+# Commits to ignore (one-off clean-up after refactor)
+# commits = []
+
+# Stopwords — if match contains any of these, skip
+stopwords = [
+  "example",
+  "placeholder",
+  "your-secret-here",
+  "your-api-key",
+  "test-secret",
+  "mock-token",
+]

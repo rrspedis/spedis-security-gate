@@ -1,0 +1,175 @@
+name: Reusable Security Gate
+
+on:
+  workflow_call:
+    inputs:
+      stack:
+        description: 'Stack hint (auto|hono|nextjs|nodejs). Optional, affects some checks.'
+        required: false
+        type: string
+        default: 'auto'
+      severity:
+        description: 'Minimum severity to fail the build (INFO|WARNING|ERROR)'
+        required: false
+        type: string
+        default: 'ERROR'
+      skip-audit:
+        description: 'Skip pnpm/npm audit step (useful if known vulnerable deps are temporarily accepted)'
+        required: false
+        type: boolean
+        default: false
+      package-manager:
+        description: 'Package manager (pnpm|npm|yarn|bun)'
+        required: false
+        type: string
+        default: 'pnpm'
+
+jobs:
+  secret-scan:
+    name: Secret scanning (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download gate config
+        run: |
+          curl -sSL -o /tmp/gitleaks.toml \
+            https://raw.githubusercontent.com/${{ github.repository_owner }}/spedis-security-gate/main/rules/gitleaks.toml || \
+          curl -sSL -o /tmp/gitleaks.toml \
+            https://raw.githubusercontent.com/tropi/spedis-security-gate/main/rules/gitleaks.toml
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: /tmp/gitleaks.toml
+
+  sast:
+    name: Static analysis (Semgrep)
+    runs-on: ubuntu-latest
+    container:
+      image: returntocorp/semgrep
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Semgrep with bundled + custom rules
+        env:
+          SEMGREP_RULES: >-
+            p/owasp-top-ten
+            p/typescript
+            p/javascript
+            p/nextjs
+            p/react
+            p/nodejs
+            p/secrets
+        run: |
+          # Descargar reglas custom del repo central
+          mkdir -p /tmp/custom-rules
+          for rule in tenant-isolation secrets-and-config error-handling input-validation crypto-and-auth injection ssrf xss cors-and-headers deprecated-and-dangerous; do
+            curl -sSL -o /tmp/custom-rules/${rule}.yml \
+              https://raw.githubusercontent.com/tropi/spedis-security-gate/main/rules/semgrep/${rule}.yml
+          done
+
+          semgrep scan \
+            --config "$SEMGREP_RULES" \
+            --config /tmp/custom-rules \
+            --severity ${{ inputs.severity }} \
+            --error \
+            --metrics off \
+            --exclude 'node_modules' \
+            --exclude '.next' \
+            --exclude 'dist' \
+            --exclude 'build' \
+            --exclude '*.test.ts' \
+            --exclude '*.spec.ts' \
+            --exclude '**/migrations/**'
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.skip-audit }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        if: ${{ inputs.package-manager == 'pnpm' }}
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: ${{ inputs.package-manager }}
+
+      - name: Install dependencies
+        run: |
+          case "${{ inputs.package-manager }}" in
+            pnpm) pnpm install --frozen-lockfile ;;
+            npm)  npm ci ;;
+            yarn) yarn install --frozen-lockfile ;;
+            bun)  bun install --frozen-lockfile ;;
+          esac
+
+      - name: Run package manager audit
+        run: |
+          case "${{ inputs.package-manager }}" in
+            pnpm) pnpm audit --audit-level=high ;;
+            npm)  npm audit --audit-level=high ;;
+            yarn) yarn audit --level high ;;
+            bun)  bun audit --audit-level high ;;
+          esac
+
+      - name: Run OSV Scanner (deeper dependency check)
+        uses: google/osv-scanner-action/osv-scanner-action@v1.9.0
+        with:
+          scan-args: |-
+            --recursive
+            --skip-git
+            ./
+
+  custom-checks:
+    name: Custom security checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download custom check scripts
+        run: |
+          mkdir -p /tmp/checks
+          for script in check-env-usage check-missing-auth check-raw-sql; do
+            curl -sSL -o /tmp/checks/${script}.sh \
+              https://raw.githubusercontent.com/tropi/spedis-security-gate/main/scripts/${script}.sh
+            chmod +x /tmp/checks/${script}.sh
+          done
+
+      - name: Check env var hardcoded fallbacks
+        run: /tmp/checks/check-env-usage.sh
+
+      - name: Check endpoints without auth middleware
+        run: /tmp/checks/check-missing-auth.sh
+
+      - name: Check raw SQL without parameterization
+        run: /tmp/checks/check-raw-sql.sh
+
+  summary:
+    name: Gate summary
+    runs-on: ubuntu-latest
+    needs: [secret-scan, sast, dependency-audit, custom-checks]
+    if: always()
+    steps:
+      - name: Fail if any required check failed
+        run: |
+          if [[ "${{ needs.secret-scan.result }}" != "success" ]] || \
+             [[ "${{ needs.sast.result }}" != "success" ]] || \
+             [[ "${{ needs.custom-checks.result }}" != "success" ]]; then
+            echo "❌ Security gate FAILED. Review logs above."
+            exit 1
+          fi
+          if [[ "${{ needs.dependency-audit.result }}" != "success" ]] && \
+             [[ "${{ needs.dependency-audit.result }}" != "skipped" ]]; then
+            echo "❌ Dependency audit failed."
+            exit 1
+          fi
+          echo "✅ Security gate passed."

@@ -1,0 +1,71 @@
+rules:
+  - id: fetch-with-user-controlled-url
+    message: |
+      fetch() with URL derived from user input without hostname validation.
+      This is exactly the SSRF vector caught in the Axisten OAuth audit.
+      Validate: protocol is https, hostname not in private CIDR blocks
+      (127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16).
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: fetch($CTX.req.$X)
+      - pattern: fetch(req.body.$X)
+      - pattern: fetch(req.query.$X)
+      - pattern: |
+          const $URL = $CTX.req.$X;
+          ...
+          fetch($URL)
+      - pattern: |
+          const $URL = req.body.$X;
+          ...
+          fetch($URL)
+    pattern-not-inside: |
+      $VALIDATOR($URL);
+      ...
+    pattern-not-inside: |
+      validateUrl($URL);
+      ...
+    pattern-not-inside: |
+      isAllowedUrl($URL);
+      ...
+
+  - id: axios-with-user-controlled-url
+    message: |
+      axios request with URL derived from user input without validation.
+      SSRF risk. Validate hostname against allowlist.
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: axios.get($CTX.req.$X)
+      - pattern: axios.post($CTX.req.$X, ...)
+      - pattern: |
+          axios({ url: $CTX.req.$X, ... })
+      - pattern: axios.get(req.body.$X)
+      - pattern: axios.get(req.query.$X)
+
+  - id: got-with-user-controlled-url
+    message: |
+      got() request with URL derived from user input without validation.
+      SSRF risk.
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: got($CTX.req.$X)
+      - pattern: got.get($CTX.req.$X)
+      - pattern: got(req.body.$X)
+
+  - id: redirect-to-user-controlled-url
+    message: |
+      Redirect to URL derived from user input without validation.
+      Open redirect vulnerability — can be weaponized for phishing.
+      Validate against allowlist of known paths/hosts.
+    severity: WARNING
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: $CTX.redirect($CTX.req.$X)
+      - pattern: res.redirect(req.query.$X)
+      - pattern: res.redirect(req.body.$X)
+      - pattern: |
+          const $URL = $CTX.req.$X;
+          ...
+          $CTX.redirect($URL)

@@ -1,0 +1,80 @@
+rules:
+  - id: empty-catch-block
+    message: |
+      Empty catch block silences errors. This is the pattern that caused
+      the encryption bug in Adscory (ciphertext returned as plaintext).
+      Minimum: log the error. Better: re-throw or handle explicitly.
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: |
+          try { ... } catch (...) { }
+      - pattern: |
+          try { ... } catch { }
+    paths:
+      exclude:
+        - "**/*.test.*"
+        - "**/*.spec.*"
+
+  - id: catch-returns-null-silently
+    message: |
+      Catch block silently returns null/undefined. If this is intentional,
+      add a comment // @silent-catch explaining why. Otherwise log or throw.
+    severity: WARNING
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: |
+          try { ... } catch (...) { return null; }
+      - pattern: |
+          try { ... } catch (...) { return undefined; }
+      - pattern: |
+          try { ... } catch (...) { return; }
+      - pattern: |
+          try { ... } catch { return null; }
+    pattern-not-inside: |
+      // @silent-catch
+      ...
+    paths:
+      exclude:
+        - "**/*.test.*"
+
+  - id: catch-returns-input-on-error
+    message: |
+      CRITICAL: Catch block returns a plaintext/ciphertext/input parameter
+      when decryption/parsing fails. This is the exact bug pattern from
+      Adscory where failed decryption returned ciphertext as plaintext.
+      Never return the input on failure.
+    severity: ERROR
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: |
+          function $F($INPUT, ...) {
+            ...
+            try { ... } catch (...) { return $INPUT; }
+          }
+      - pattern: |
+          const $F = ($INPUT, ...) => {
+            ...
+            try { ... } catch (...) { return $INPUT; }
+          }
+
+  - id: unhandled-promise-rejection
+    message: |
+      Async operation without .catch() or try/catch. Unhandled rejection
+      may crash the process or leak error details.
+    severity: INFO
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: |
+          async function $F(...) {
+            ...
+            await $X;
+            ...
+          }
+    pattern-not-inside: |
+      try { ... } catch (...) { ... }
+    pattern-not-inside: |
+      ... .catch(...)
+    paths:
+      exclude:
+        - "**/*.test.*"
