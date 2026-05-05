@@ -97,10 +97,40 @@ paths = [
   '''package-lock\.json''',
   '''pnpm-lock\.yaml''',
   '''yarn\.lock''',
+  '''bun\.lock''',
   '''\.example$''',
   '''\.env\.example''',
   '''\.env\.template''',
   '''\.env\.sample''',
+
+  # ── Categorical false positives (added v1.0.7) ────────────────────────
+  # These path classes contain literals that ARE checked-in by design:
+  #
+  # - __tests__/ + *.test.ts/spec.ts: cryptography tests need deterministic
+  #   keys for reproducibility. Real secrets never live in test files.
+  #
+  # - .github/workflows/: CI workflows commit ephemeral test env vars (test
+  #   DB URL, throwaway JWT/encryption keys). Real production secrets go
+  #   through GitHub Actions secrets, never YAML.
+  #
+  # - *.md: documentation includes example DATABASE_URLs, JSON snippets,
+  #   curl examples. Concrete examples are necessary for readability.
+  #
+  # - migrations/*.sql: SQL files often have header comments with example
+  #   connection strings to explain the role/permission model.
+  #
+  # - *.fixture.* / *.local.*: deterministic seed/fixture data files.
+  #
+  # Production code outside these paths (apps/*/src/{routes,services,lib})
+  # remains scanned with full strictness.
+  '''.+/__tests__/.+''',
+  '''.+\.test\.[jt]sx?$''',
+  '''.+\.spec\.[jt]sx?$''',
+  '''\.github/workflows/.+\.ya?ml$''',
+  '''.+\.md$''',
+  '''.+/migrations/.+\.sql$''',
+  '''.+\.fixture\.[jt]sx?$''',
+  '''.+\.local\.[jt]sx?$''',
 ]
 
 # Regex matches to ignore
