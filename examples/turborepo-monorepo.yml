@@ -43,4 +43,3 @@ jobs:
     with:
       package-manager: pnpm
       severity: ERROR
-    secrets: inherit

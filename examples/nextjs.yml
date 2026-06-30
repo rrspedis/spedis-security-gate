@@ -24,7 +24,6 @@ jobs:
       package-manager: pnpm
       severity: ERROR
       # stack: nextjs  # optional hint
-    secrets: inherit
 
   # Extra check: Next.js config must have security headers
   nextjs-headers-check:
