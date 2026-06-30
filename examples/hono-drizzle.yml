@@ -24,4 +24,3 @@ jobs:
       package-manager: pnpm
       severity: ERROR
       # stack: hono  # optional hint, autodetected by default
-    secrets: inherit

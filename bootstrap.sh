@@ -74,7 +74,6 @@ jobs:
     with:
       package-manager: ${PKG_MANAGER}
       severity: ERROR
-    secrets: inherit
 WORKFLOW
 
 echo -e "${GREEN}OK Installed${NC} .github/workflows/security-gate.yml"
